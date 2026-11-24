@@ -17,7 +17,7 @@ test('Cookies', async t => {
   async function load () {
     const fastify = Fastify()
     await fastify.register(fastifyCookie)
-    await fastify.register(fastifyCsrf)
+    await fastify.register(fastifyCsrf, { userInfoBinding: false })
     fastify.decorate('testType', 'fastify-cookie')
     return fastify
   }
@@ -50,7 +50,7 @@ test('Cookies signed', async t => {
   async function load () {
     const fastify = Fastify()
     await fastify.register(fastifyCookie, { secret: 'supersecret' })
-    await fastify.register(fastifyCsrf, { cookieOpts: { signed: true } })
+    await fastify.register(fastifyCsrf, { cookieOpts: { signed: true }, userInfoBinding: false })
     fastify.decorate('testType', 'fastify-cookie')
     return fastify
   }
@@ -70,7 +70,7 @@ test('Fastify Session', async t => {
       secret: 'a'.repeat(32),
       cookie: { path: '/', secure: false }
     })
-    await fastify.register(fastifyCsrf, { sessionPlugin: '@fastify/session' })
+    await fastify.register(fastifyCsrf, { sessionPlugin: '@fastify/session', userInfoBinding: false })
     fastify.decorate('testType', 'fastify-session')
     return fastify
   }
@@ -85,7 +85,7 @@ test('Fastify Secure Session', async t => {
   async function load () {
     const fastify = Fastify()
     await fastify.register(fastifySecureSession, { key, cookie: { path: '/', secure: false } })
-    await fastify.register(fastifyCsrf, { sessionPlugin: '@fastify/secure-session' })
+    await fastify.register(fastifyCsrf, { sessionPlugin: '@fastify/secure-session', userInfoBinding: false })
     fastify.decorate('testType', 'fastify-secure-session')
     return fastify
   }
@@ -139,10 +139,37 @@ test('Validation', async t => {
     try {
       const fastify = Fastify()
       await fastify.register(fastifyCookie)
-      await fastify.register(fastifyCsrf, { cookieOpts: 42 })
+      await fastify.register(fastifyCsrf, { cookieOpts: 42, userInfoBinding: false })
       await fastify.ready()
     } catch (err) {
       t.assert.strictEqual(err.message, 'cookieOpts should be a object')
+    }
+  })
+
+  await t.test('userInfoBinding', async t => {
+    t.plan(1)
+    try {
+      const fastify = Fastify()
+      await fastify.register(fastifyCookie)
+      await fastify.register(fastifyCsrf, { userInfoBinding: 42 })
+      await fastify.ready()
+    } catch (err) {
+      t.assert.strictEqual(err.message, 'userInfoBinding should be a boolean')
+    }
+  })
+
+  await t.test('userInfoBinding enabled by default requires getUserInfo', async t => {
+    t.plan(1)
+    try {
+      const fastify = Fastify()
+      await fastify.register(fastifyCookie)
+      await fastify.register(fastifyCsrf)
+      await fastify.ready()
+    } catch (err) {
+      t.assert.strictEqual(
+        err.message,
+        'getUserInfo is required when userInfoBinding is enabled, set userInfoBinding to false to explicitly opt out'
+      )
     }
   })
 
@@ -151,7 +178,7 @@ test('Validation', async t => {
     try {
       const fastify = Fastify()
       await fastify.register(fastifyCookie)
-      await fastify.register(fastifyCsrf, { sessionPlugin: 42 })
+      await fastify.register(fastifyCsrf, { sessionPlugin: 42, userInfoBinding: false })
       await fastify.ready()
     } catch (err) {
       t.assert.strictEqual(err.message, "sessionPlugin should be one of the following: '@fastify/cookie', '@fastify/session', '@fastify/secure-session'")
@@ -163,7 +190,7 @@ test('Validation', async t => {
     try {
       const fastify = Fastify()
       await fastify.register(fastifyCookie)
-      await fastify.register(fastifyCsrf, { logLevel: undefined })
+      await fastify.register(fastifyCsrf, { logLevel: undefined, userInfoBinding: false })
       await fastify.ready()
     } catch (err) {
       t.assert.strictEqual(err.message, 'logLevel should be a string')
@@ -184,7 +211,7 @@ test('csrf options', async () => {
 
   await Fastify()
     .register(fastifyCookie)
-    .register(fastifyCsrf, { csrfOpts })
+    .register(fastifyCsrf, { csrfOpts, userInfoBinding: false })
 
   sinon.assert.calledWith(csrf, csrfOpts)
 })
@@ -201,7 +228,7 @@ const spyLogger = {
 
 test('logLevel options', async t => {
   async function load (logLevel) {
-    const opts = logLevel ? { logLevel } : {}
+    const opts = logLevel ? { logLevel, userInfoBinding: false } : { userInfoBinding: false }
     const fastify = Fastify({ loggerInstance: spyLogger })
     await fastify.register(fastifyCookie)
     await fastify.register(fastifyCsrf, opts)

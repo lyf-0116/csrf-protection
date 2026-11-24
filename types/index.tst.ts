@@ -14,7 +14,7 @@ declare module 'fastify' {
 
 async function run () {
   await fastify.register(FastifyCookie)
-  await fastify.register(FastifyCsrfProtection)
+  await fastify.register(FastifyCsrfProtection, { userInfoBinding: false })
 
   fastify.route({
     method: 'GET',
@@ -42,7 +42,8 @@ async function run () {
 run()
 
 fastify.register(FastifyCsrfProtection, {
-  csrfOpts: { algorithm: 'sha1', hmacKey: 'hmac' }
+  csrfOpts: { algorithm: 'sha1', hmacKey: 'hmac' },
+  userInfoBinding: false
 })
 
 expect(fastify.register).type.not.toBeCallableWith(FastifyCsrfProtection, {
@@ -72,11 +73,12 @@ expect(fastify.register).type.not.toBeCallableWith(FastifyCsrfProtection, {
 
 fastify.register(FastifyCsrfProtection, {
   csrfOpts: { hmacKey: 'hmac' },
-  sessionPlugin: '@fastify/cookie'
+  sessionPlugin: '@fastify/cookie',
+  userInfoBinding: false
 })
-fastify.register(FastifyCsrfProtection, { csrfOpts: { hmacKey: 'hmac' } })
-fastify.register(FastifyCsrfProtection, {})
-fastify.register(FastifyCsrfProtection, { csrfOpts: {} })
+fastify.register(FastifyCsrfProtection, { csrfOpts: { hmacKey: 'hmac' }, userInfoBinding: false })
+fastify.register(FastifyCsrfProtection, { userInfoBinding: false })
+fastify.register(FastifyCsrfProtection, { csrfOpts: {}, userInfoBinding: false })
 
 expect(fastify.register).type.not.toBeCallableWith(FastifyCsrfProtection, {
   csrfOpts: { userInfo: true },
@@ -85,19 +87,33 @@ expect(fastify.register).type.not.toBeCallableWith(FastifyCsrfProtection, {
 
 fastify.register(FastifyCsrfProtection, {
   sessionPlugin: '@fastify/cookie',
-  csrfOpts: { userInfo: true, hmacKey: 'key' }
+  csrfOpts: { userInfo: true, hmacKey: 'key' },
+  getUserInfo: () => 'user-info'
 })
-fastify.register(FastifyCsrfProtection, { sessionPlugin: '@fastify/cookie' })
+fastify.register(FastifyCsrfProtection, { sessionPlugin: '@fastify/cookie', userInfoBinding: false })
 fastify.register(FastifyCsrfProtection, {
   csrfOpts: {},
-  sessionPlugin: '@fastify/session'
+  sessionPlugin: '@fastify/session',
+  userInfoBinding: false
 })
 fastify.register(FastifyCsrfProtection, {
   csrfOpts: {},
-  sessionPlugin: '@fastify/secure-session'
+  sessionPlugin: '@fastify/secure-session',
+  userInfoBinding: false
 })
-fastify.register(FastifyCsrfProtection, { sessionPlugin: '@fastify/session' })
+fastify.register(FastifyCsrfProtection, { sessionPlugin: '@fastify/session', userInfoBinding: false })
 fastify.register(FastifyCsrfProtection, {
-  sessionPlugin: '@fastify/secure-session'
+  sessionPlugin: '@fastify/secure-session',
+  userInfoBinding: false
 })
-fastify.register(FastifyCsrfProtection, { logLevel: 'info' })
+fastify.register(FastifyCsrfProtection, { logLevel: 'info', userInfoBinding: false })
+
+// userInfoBinding defaults to true and requires getUserInfo
+expect(fastify.register).type.not.toBeCallableWith(FastifyCsrfProtection, {
+  userInfoBinding: true
+})
+fastify.register(FastifyCsrfProtection, {
+  userInfoBinding: true,
+  csrfOpts: { hmacKey: 'hmac' },
+  getUserInfo: () => 'user-info'
+})

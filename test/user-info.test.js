@@ -173,6 +173,84 @@ test('SecureSession with User-Info', async t => {
   t.assert.strictEqual(response2.statusCode, 200)
 })
 
+test('Bound token cannot be replayed with another user session', async t => {
+  const fastify = Fastify()
+  await fastify.register(fastifyCookie)
+  await fastify.register(fastifyCsrf, {
+    csrfOpts: { hmacKey: 'foo' },
+    getUserInfo (req) {
+      return req.body.username
+    }
+  })
+
+  fastify.post('/login', async (req, reply) => {
+    const token = reply.generateCsrf({ userInfo: req.body.username })
+    return { token }
+  })
+
+  fastify.post('/', { preHandler: fastify.csrfProtection }, async (req) => {
+    return req.body
+  })
+
+  const login = await fastify.inject({
+    method: 'POST',
+    path: '/login',
+    body: { username: 'foo' }
+  })
+
+  t.assert.strictEqual(login.statusCode, 200)
+  const cookie = login.cookies[0]
+  const { token } = login.json()
+
+  const sameUser = await fastify.inject({
+    method: 'POST',
+    path: '/',
+    cookies: { _csrf: cookie.value },
+    body: { _csrf: token, username: 'foo' }
+  })
+  t.assert.strictEqual(sameUser.statusCode, 200)
+
+  const otherUser = await fastify.inject({
+    method: 'POST',
+    path: '/',
+    cookies: { _csrf: cookie.value },
+    body: { _csrf: token, username: 'bar' }
+  })
+  t.assert.strictEqual(otherUser.statusCode, 403)
+  t.assert.strictEqual(otherUser.json().message, 'Invalid csrf token')
+})
+
+test('Explicitly disabled binding keeps tokens portable across user sessions', async t => {
+  const fastify = Fastify()
+  await fastify.register(fastifyCookie)
+  await fastify.register(fastifyCsrf, {
+    userInfoBinding: false,
+    csrfOpts: { hmacKey: 'foo' }
+  })
+
+  fastify.get('/login', async (_req, reply) => {
+    const token = reply.generateCsrf()
+    return { token }
+  })
+
+  fastify.post('/', { preHandler: fastify.csrfProtection }, async (req) => {
+    return req.body
+  })
+
+  const login = await fastify.inject({ method: 'GET', path: '/login' })
+  t.assert.strictEqual(login.statusCode, 200)
+  const cookie = login.cookies[0]
+  const { token } = login.json()
+
+  const replayed = await fastify.inject({
+    method: 'POST',
+    path: '/',
+    cookies: { _csrf: cookie.value },
+    body: { _csrf: token, username: 'anyone' }
+  })
+  t.assert.strictEqual(replayed.statusCode, 200)
+})
+
 test('Validate presence of hmac key with User-Info /1', async (t) => {
   const fastify = Fastify()
   await fastify.register(fastifyCookie)

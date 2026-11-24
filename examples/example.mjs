@@ -7,7 +7,9 @@ const fastify = Fastify({
 })
 
 fastify.register(fastifyCookie)
-await fastify.register(fastifyCsrfProtection)
+// userInfoBinding defaults to true and requires a getUserInfo function;
+// this example has no user identity, so the binding is explicitly disabled.
+await fastify.register(fastifyCsrfProtection, { userInfoBinding: false })
 
 fastify.post(
   '/',

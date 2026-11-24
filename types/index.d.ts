@@ -43,6 +43,20 @@ declare namespace fastifyCsrfProtection {
     userInfo?: false;
   }
 
+  interface FastifyCsrfProtectionOptionsBindingEnabled {
+    userInfoBinding?: true;
+    getUserInfo: (req: FastifyRequest) => string;
+  }
+
+  interface FastifyCsrfProtectionOptionsBindingDisabled {
+    userInfoBinding: false;
+    getUserInfo?: (req: FastifyRequest) => string;
+  }
+
+  type FastifyCsrfProtectionOptionsBinding =
+    FastifyCsrfProtectionOptionsBindingEnabled |
+    FastifyCsrfProtectionOptionsBindingDisabled
+
   interface FastifyCsrfProtectionOptionsFastifyCookie {
     sessionPlugin?: '@fastify/cookie';
     csrfOpts?: OptionalCSRFNoUserInfo | RequiredCSRFHmac;
@@ -62,7 +76,7 @@ declare namespace fastifyCsrfProtection {
     FastifyCsrfProtectionOptionsFastifyCookie |
     FastifyCsrfProtectionOptionsFastifySession |
     FastifyCsrfProtectionOptionsFastifySecureSession
-  )
+  ) & FastifyCsrfProtectionOptionsBinding
 
   export const fastifyCsrfProtection: FastifyCsrfProtection
   export { fastifyCsrfProtection as default }

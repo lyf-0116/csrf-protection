@@ -14,6 +14,7 @@ const defaultOptions = {
   sessionKey: '_csrf',
   getToken: getTokenDefault,
   getUserInfo: getUserInfoDefault,
+  userInfoBinding: true,
   sessionPlugin: '@fastify/cookie',
   logLevel: 'warn'
 }
@@ -25,6 +26,7 @@ async function fastifyCsrfProtection (fastify, opts) {
     sessionKey,
     getToken,
     getUserInfo,
+    userInfoBinding,
     sessionPlugin,
     logLevel
   } = Object.assign({}, defaultOptions, opts)
@@ -35,6 +37,7 @@ async function fastifyCsrfProtection (fastify, opts) {
   assert(typeof sessionKey === 'string', 'sessionKey should be a string')
   assert(typeof getToken === 'function', 'getToken should be a function')
   assert(typeof getUserInfo === 'function', 'getUserInfo should be a function')
+  assert(typeof userInfoBinding === 'boolean', 'userInfoBinding should be a boolean')
   assert(typeof cookieOpts === 'object', 'cookieOpts should be a object')
   assert(typeof logLevel === 'string', 'logLevel should be a string')
   assert(
@@ -42,7 +45,8 @@ async function fastifyCsrfProtection (fastify, opts) {
     "sessionPlugin should be one of the following: '@fastify/cookie', '@fastify/session', '@fastify/secure-session'"
   )
 
-  if (opts.getUserInfo) {
+  if (userInfoBinding) {
+    assert(opts.getUserInfo, 'getUserInfo is required when userInfoBinding is enabled, set userInfoBinding to false to explicitly opt out')
     csrfOpts.userInfo = true
   }
 
