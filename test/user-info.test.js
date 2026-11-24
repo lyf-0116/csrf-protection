@@ -312,3 +312,174 @@ test('Validate presence of hmac key with User-Info /6', async (t) => {
     })
   }))
 })
+
+const sessionPlugins = ['@fastify/cookie', '@fastify/session', '@fastify/secure-session']
+
+for (const sessionPlugin of sessionPlugins) {
+  test(`${sessionPlugin}: generateCsrf enforces userInfo binding`, async t => {
+    const fastify = Fastify()
+    await fastify.register(fastifyCookie)
+    if (sessionPlugin === '@fastify/session') {
+      await fastify.register(fastifySession, {
+        secret: 'a'.repeat(32),
+        cookie: { path: '/', secure: false }
+      })
+    } else if (sessionPlugin === '@fastify/secure-session') {
+      await fastify.register(fastifySecureSession, { key, cookie: { path: '/', secure: false } })
+    }
+    await fastify.register(fastifyCsrf, {
+      sessionPlugin,
+      getUserInfo (req) {
+        if (sessionPlugin === '@fastify/cookie') return req.body?.username
+        if (sessionPlugin === '@fastify/session') return req.session.username
+        return req.session.get('username')
+      },
+      csrfOpts: { hmacKey: 'foo' }
+    })
+
+    fastify.get('/form', async (_req, reply) => reply.generateCsrf())
+
+    await fastify.ready()
+
+    const response = await fastify.inject({ method: 'GET', path: '/form' })
+    t.assert.strictEqual(response.statusCode, 403)
+    t.assert.strictEqual(response.json().code, 'FST_CSRF_MISSING_USER_INFO')
+  })
+
+  test(`${sessionPlugin}: rejects a token replayed with a different userInfo`, async t => {
+    const fastify = Fastify()
+    await fastify.register(fastifyCookie)
+    if (sessionPlugin === '@fastify/session') {
+      await fastify.register(fastifySession, {
+        secret: 'a'.repeat(32),
+        cookie: { path: '/', secure: false }
+      })
+    } else if (sessionPlugin === '@fastify/secure-session') {
+      await fastify.register(fastifySecureSession, { key, cookie: { path: '/', secure: false } })
+    }
+    await fastify.register(fastifyCsrf, {
+      sessionPlugin,
+      getUserInfo (req) {
+        if (sessionPlugin === '@fastify/cookie') return req.body.username
+        if (sessionPlugin === '@fastify/session') return req.session.username
+        return req.session.get('username')
+      },
+      csrfOpts: { hmacKey: 'foo' }
+    })
+
+    fastify.post('/identity', async (req, reply) => {
+      if (sessionPlugin === '@fastify/session') req.session.username = req.body.username
+      if (sessionPlugin === '@fastify/secure-session') req.session.set('username', req.body.username)
+      return { ok: true }
+    })
+    fastify.post('/login', async (req, reply) => {
+      if (sessionPlugin === '@fastify/session') req.session.username = req.body.username
+      if (sessionPlugin === '@fastify/secure-session') req.session.set('username', req.body.username)
+      const token = reply.generateCsrf({ userInfo: req.body.username })
+      return { token }
+    })
+    fastify.post('/', { preHandler: fastify.csrfProtection }, async (req) => req.body)
+
+    await fastify.ready()
+
+    const login = await fastify.inject({
+      method: 'POST',
+      path: '/login',
+      body: { username: 'attacker' }
+    })
+    t.assert.strictEqual(login.statusCode, 200)
+    const storeCookie = login.cookies[0]
+    const { token } = login.json()
+
+    const cookies = { [storeCookie.name]: storeCookie.value }
+    if (sessionPlugin !== '@fastify/cookie') {
+      // the same session now belongs to a different user
+      const identity = await fastify.inject({
+        method: 'POST',
+        path: '/identity',
+        cookies,
+        body: { username: 'victim' }
+      })
+      for (const cookie of identity.cookies) {
+        cookies[cookie.name] = cookie.value
+      }
+    }
+
+    const response = await fastify.inject({
+      method: 'POST',
+      path: '/',
+      cookies,
+      body: { _csrf: token, username: 'victim' }
+    })
+
+    t.assert.strictEqual(response.statusCode, 403)
+    t.assert.strictEqual(response.json().code, 'FST_CSRF_INVALID_TOKEN')
+  })
+
+  test(`${sessionPlugin}: csrfProtection rejects a request without userInfo`, async t => {
+    const fastify = Fastify()
+    await fastify.register(fastifyCookie)
+    if (sessionPlugin === '@fastify/session') {
+      await fastify.register(fastifySession, {
+        secret: 'a'.repeat(32),
+        cookie: { path: '/', secure: false }
+      })
+    } else if (sessionPlugin === '@fastify/secure-session') {
+      await fastify.register(fastifySecureSession, { key, cookie: { path: '/', secure: false } })
+    }
+    await fastify.register(fastifyCsrf, {
+      sessionPlugin,
+      getUserInfo (req) {
+        if (sessionPlugin === '@fastify/cookie') return req.body?.username
+        if (sessionPlugin === '@fastify/session') return req.session.username
+        return req.session.get('username')
+      },
+      csrfOpts: { hmacKey: 'foo' }
+    })
+
+    fastify.post('/identity', async (req, reply) => {
+      if (sessionPlugin === '@fastify/session') delete req.session.username
+      if (sessionPlugin === '@fastify/secure-session') req.session.set('username', undefined)
+      return { ok: true }
+    })
+    fastify.post('/login', async (req, reply) => {
+      if (sessionPlugin === '@fastify/session') req.session.username = req.body.username
+      if (sessionPlugin === '@fastify/secure-session') req.session.set('username', req.body.username)
+      const token = reply.generateCsrf({ userInfo: req.body.username })
+      return { token }
+    })
+    fastify.post('/', { preHandler: fastify.csrfProtection }, async (req) => req.body)
+
+    await fastify.ready()
+
+    const login = await fastify.inject({
+      method: 'POST',
+      path: '/login',
+      body: { username: 'attacker' }
+    })
+    const storeCookie = login.cookies[0]
+    const { token } = login.json()
+
+    const cookies = { [storeCookie.name]: storeCookie.value }
+    if (sessionPlugin !== '@fastify/cookie') {
+      const identity = await fastify.inject({
+        method: 'POST',
+        path: '/identity',
+        cookies
+      })
+      for (const cookie of identity.cookies) {
+        cookies[cookie.name] = cookie.value
+      }
+    }
+
+    const response = await fastify.inject({
+      method: 'POST',
+      path: '/',
+      cookies,
+      body: { _csrf: token }
+    })
+
+    t.assert.strictEqual(response.statusCode, 403)
+    t.assert.strictEqual(response.json().code, 'FST_CSRF_MISSING_USER_INFO')
+  })
+}

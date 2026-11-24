@@ -7,6 +7,7 @@ const createError = require('@fastify/error')
 
 const MissingCSRFSecretError = createError('FST_CSRF_MISSING_SECRET', 'Missing csrf secret', 403)
 const InvalidCSRFTokenError = createError('FST_CSRF_INVALID_TOKEN', 'Invalid csrf token', 403)
+const MissingUserInfoError = createError('FST_CSRF_MISSING_USER_INFO', 'Missing csrf userInfo', 403)
 
 const defaultOptions = {
   cookieKey: '_csrf',
@@ -54,61 +55,48 @@ async function fastifyCsrfProtection (fastify, opts) {
 
   const isCookieSigned = cookieOpts?.signed
 
-  if (sessionPlugin === '@fastify/secure-session') {
-    fastify.decorateReply('generateCsrf', generateCsrfSecureSession)
-  } else if (sessionPlugin === '@fastify/session') {
-    fastify.decorateReply('generateCsrf', generateCsrfSession)
-  } else {
-    fastify.decorateReply('generateCsrf', generateCsrfCookie)
-  }
-
-  fastify.decorate('csrfProtection', csrfProtection)
-
   let getSecret
+  let saveSecret
+  let applyStoreOptions
 
   if (sessionPlugin === '@fastify/secure-session') {
-    getSecret = function getSecret (req, _reply) { return req.session.get(sessionKey) }
+    getSecret = function getSecret (req) { return req.session.get(sessionKey) }
+    saveSecret = function saveSecret (req, _reply, secret) { req.session.set(sessionKey, secret) }
+    applyStoreOptions = function applyStoreOptions (req, opts) { req.session.options(opts) }
   } else if (sessionPlugin === '@fastify/session') {
-    getSecret = function getSecret (req, _reply) { return req.session[sessionKey] }
+    getSecret = function getSecret (req) { return req.session[sessionKey] }
+    saveSecret = function saveSecret (req, _reply, secret) { req.session[sessionKey] = secret }
+    applyStoreOptions = function applyStoreOptions () {}
   } else {
     getSecret = function getSecret (req, reply) {
       return isCookieSigned
         ? reply.unsignCookie(req.cookies[cookieKey] || '').value
         : req.cookies[cookieKey]
     }
+    saveSecret = function saveSecret (_req, reply, secret, opts) {
+      reply.setCookie(cookieKey, secret, Object.assign({}, cookieOpts, opts))
+    }
+    applyStoreOptions = function applyStoreOptions () {}
   }
 
-  function generateCsrfCookie (opts) {
-    let secret = isCookieSigned
-      ? this.unsignCookie(this.request.cookies[cookieKey] || '').value
-      : this.request.cookies[cookieKey]
-    const userInfo = opts ? opts.userInfo : undefined
-    if (!secret) {
-      secret = tokens.secretSync()
-      this.setCookie(cookieKey, secret, Object.assign({}, cookieOpts, opts))
-    }
-    return tokens.create(secret, userInfo)
-  }
+  fastify.decorate('csrfProtection', csrfProtection)
 
-  function generateCsrfSecureSession (opts) {
-    let secret = this.request.session.get(sessionKey)
-    if (!secret) {
-      secret = tokens.secretSync()
-      this.request.session.set(sessionKey, secret)
-    }
-    const userInfo = opts ? opts.userInfo : undefined
-    if (opts) {
-      this.request.session.options(opts)
-    }
-    return tokens.create(secret, userInfo)
-  }
+  fastify.decorateReply('generateCsrf', generateCsrf)
 
-  function generateCsrfSession (opts) {
-    let secret = this.request.session[sessionKey]
+  function generateCsrf (opts) {
     const userInfo = opts ? opts.userInfo : undefined
+    if (csrfOpts.userInfo && typeof userInfo !== 'string') {
+      throw new MissingUserInfoError()
+    }
+    const storeOptions = opts ? Object.fromEntries(Object.entries(opts).filter(([key]) => key !== 'userInfo')) : undefined
+
+    let secret = getSecret(this.request, this)
     if (!secret) {
       secret = tokens.secretSync()
-      this.request.session[sessionKey] = secret
+      saveSecret(this.request, this, secret, storeOptions)
+    }
+    if (storeOptions) {
+      applyStoreOptions(this.request, storeOptions)
     }
     return tokens.create(secret, userInfo)
   }
@@ -119,7 +107,12 @@ async function fastifyCsrfProtection (fastify, opts) {
       req.log[logLevel]('Missing csrf secret')
       return reply.send(new MissingCSRFSecretError())
     }
-    if (!tokens.verify(secret, getToken(req), getUserInfo(req))) {
+    const userInfo = getUserInfo(req)
+    if (csrfOpts.userInfo && typeof userInfo !== 'string') {
+      req.log[logLevel]('Missing csrf userInfo')
+      return reply.send(new MissingUserInfoError())
+    }
+    if (!tokens.verify(secret, getToken(req), userInfo)) {
       req.log[logLevel]('Invalid csrf token')
       return reply.send(new InvalidCSRFTokenError())
     }

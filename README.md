@@ -174,6 +174,11 @@ You can also pass the [cookie serialization](https://github.com/fastify/fastify-
 The option `userInfo` is required if `getUserInfo` has been specified in the module option.
 The provided `userInfo` is hashed inside the csrf token and it is not directly exposed.
 This option is needed to protect against cookie tossing.
+When `getUserInfo` is configured, `reply.generateCsrf` rejects any call that does not
+provide a `userInfo` string with a `FST_CSRF_MISSING_USER_INFO` (403) error, and the
+`csrfProtection` hook rejects requests for which `getUserInfo` does not return a string.
+This guarantees the user binding is always present and verified regardless of the
+configured `sessionPlugin`.
 The option `csrfOpts.hmacKey` is required if `getUserInfo` has been specified in the module option in combination with using [@fastify/cookie](https://github.com/fastify/fastify-cookie) as sessionPlugin.
 
 ### `fastify.csrfProtection(request, reply, next)`
