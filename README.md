@@ -201,13 +201,24 @@ You can configure the function to read the CSRF token via the `getToken` option,
 
 ```js
 function getToken (req) {
-  return (req.body && req.body._csrf) ||
-    req.headers['csrf-token'] ||
-    req.headers['xsrf-token'] ||
-    req.headers['x-csrf-token'] ||
+  const tokenSources = [
+    req.body?._csrf,
+    req.headers['csrf-token'],
+    req.headers['xsrf-token'],
+    req.headers['x-csrf-token'],
     req.headers['x-xsrf-token']
+  ]
+
+  const tokens = tokenSources.filter(Boolean)
+  if (tokens.length > 1 && !tokens.every(token => token === tokens[0])) {
+    throw new Error('Conflicting CSRF tokens in request sources')
+  }
+
+  return tokens[0]
 }
 ```
+
+When using the default token extraction, providing different values in multiple sources rejects the request instead of silently selecting the highest-priority source. The server log records the conflicting source names. Identical values may be repeated across sources, but applications should migrate clients and gateways to one canonical source. If you provide a custom `getToken`, implement the same consistency policy when needed.
 
 It is recommended to provide a custom `getToken` function for performance and [security](https://cheatsheetseries.owasp.org/cheatsheets/Cross-Site_Request_Forgery_Prevention_Cheat_Sheet.html#employing-custom-request-headers-for-ajaxapi) reasons.
 

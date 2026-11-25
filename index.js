@@ -7,6 +7,11 @@ const createError = require('@fastify/error')
 
 const MissingCSRFSecretError = createError('FST_CSRF_MISSING_SECRET', 'Missing csrf secret', 403)
 const InvalidCSRFTokenError = createError('FST_CSRF_INVALID_TOKEN', 'Invalid csrf token', 403)
+const MultipleCSRFTokenSourcesError = createError(
+  'FST_CSRF_MULTIPLE_TOKEN_SOURCES',
+  'Conflicting CSRF tokens in request sources',
+  403
+)
 
 const defaultOptions = {
   cookieKey: '_csrf',
@@ -119,7 +124,22 @@ async function fastifyCsrfProtection (fastify, opts) {
       req.log[logLevel]('Missing csrf secret')
       return reply.send(new MissingCSRFSecretError())
     }
-    if (!tokens.verify(secret, getToken(req), getUserInfo(req))) {
+
+    let token
+    try {
+      token = getToken(req)
+    } catch (error) {
+      if (error instanceof MultipleCSRFTokenSourcesError) {
+        req.log[logLevel](
+          { tokenSources: error.tokenSources },
+          'Conflicting csrf tokens'
+        )
+        return reply.send(new InvalidCSRFTokenError())
+      }
+      return next(error)
+    }
+
+    if (!tokens.verify(secret, token, getUserInfo(req))) {
       req.log[logLevel]('Invalid csrf token')
       return reply.send(new InvalidCSRFTokenError())
     }
@@ -128,11 +148,33 @@ async function fastifyCsrfProtection (fastify, opts) {
 }
 
 function getTokenDefault (req) {
-  return req.body?._csrf ||
-    req.headers['csrf-token'] ||
-    req.headers['xsrf-token'] ||
-    req.headers['x-csrf-token'] ||
-    req.headers['x-xsrf-token']
+  const tokenSources = [
+    ['body._csrf', req.body?._csrf],
+    ['header.csrf-token', req.headers['csrf-token']],
+    ['header.xsrf-token', req.headers['xsrf-token']],
+    ['header.x-csrf-token', req.headers['x-csrf-token']],
+    ['header.x-xsrf-token', req.headers['x-xsrf-token']]
+  ]
+
+  const providedTokens = []
+  const providedSourceNames = []
+  for (const [sourceName, token] of tokenSources) {
+    if (token) {
+      providedTokens.push(token)
+      providedSourceNames.push(sourceName)
+    }
+  }
+
+  if (providedTokens.length > 1) {
+    const [firstToken] = providedTokens
+    if (!providedTokens.every(token => token === firstToken)) {
+      const error = new MultipleCSRFTokenSourcesError()
+      error.tokenSources = providedSourceNames
+      throw error
+    }
+  }
+
+  return providedTokens[0]
 }
 
 function getUserInfoDefault (_req) {
