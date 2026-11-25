@@ -12,12 +12,13 @@ const fastifyCsrf = require('../')
 const sodium = require('sodium-native')
 const key = Buffer.alloc(sodium.crypto_secretbox_KEYBYTES)
 sodium.randombytes_buf(key)
+const hmacKey = 'a'.repeat(32)
 
 test('Cookies', async t => {
   async function load () {
     const fastify = Fastify()
     await fastify.register(fastifyCookie)
-    await fastify.register(fastifyCsrf)
+    await fastify.register(fastifyCsrf, { csrfOpts: { hmacKey } })
     fastify.decorate('testType', 'fastify-cookie')
     return fastify
   }
@@ -169,6 +170,42 @@ test('Validation', async t => {
       t.assert.strictEqual(err.message, 'logLevel should be a string')
     }
   })
+
+  await t.test('cookie signing or hmac key', async t => {
+    async function load (opts) {
+      const fastify = Fastify()
+      await fastify.register(fastifyCookie)
+      fastify.register(fastifyCsrf, opts)
+      await fastify.ready()
+    }
+
+    await t.test('requires a signed cookie or hmac key', async t => {
+      await t.assert.rejects(load(), {
+        message: 'cookieOpts.signed or csrfOpts.hmacKey is required'
+      })
+    })
+
+    await t.test('rejects an explicitly unsigned cookie without hmac key', async t => {
+      await t.assert.rejects(load({ cookieOpts: { signed: false } }), {
+        message: 'cookieOpts.signed or csrfOpts.hmacKey is required'
+      })
+    })
+
+    await t.test('rejects csrf options without hmac key', async t => {
+      await t.assert.rejects(load({ csrfOpts: { algorithm: 'sha1' } }), {
+        message: 'cookieOpts.signed or csrfOpts.hmacKey is required'
+      })
+    })
+
+    await t.test('rejects a signed cookie without a cookie secret', async t => {
+      const fastify = Fastify()
+      await fastify.register(fastifyCookie)
+      fastify.register(fastifyCsrf, { cookieOpts: { signed: true } })
+      await t.assert.rejects(fastify.ready(), {
+        message: '@fastify/cookie must be registered with a secret when cookieOpts.signed is true'
+      })
+    })
+  })
 })
 
 test('csrf options', async () => {
@@ -183,8 +220,8 @@ test('csrf options', async () => {
   const csrfOpts = { some: 'options' }
 
   await Fastify()
-    .register(fastifyCookie)
-    .register(fastifyCsrf, { csrfOpts })
+    .register(fastifyCookie, { secret: 'supersecret' })
+    .register(fastifyCsrf, { csrfOpts, cookieOpts: { signed: true } })
 
   sinon.assert.calledWith(csrf, csrfOpts)
 })
@@ -204,7 +241,7 @@ test('logLevel options', async t => {
     const opts = logLevel ? { logLevel } : {}
     const fastify = Fastify({ loggerInstance: spyLogger })
     await fastify.register(fastifyCookie)
-    await fastify.register(fastifyCsrf, opts)
+    await fastify.register(fastifyCsrf, { ...opts, csrfOpts: { hmacKey } })
     fastify.get('/', async (_req, reply) => {
       reply.generateCsrf()
       return {}

@@ -46,11 +46,14 @@ If you use `@fastify/csrf-protection` with `@fastify/cookie`, the CSRF secret wi
 By default, the cookie used will be named `_csrf`, but you can rename it via the `cookieKey` option.
 When `cookieOpts` are provided, they **override** the default cookie options. Make sure you restore any of the default options which provide sensible and secure defaults.
 
-```js
-fastify.register(require('@fastify/cookie'))
-fastify.register(require('@fastify/csrf-protection'))
+Because the CSRF secret is stored in a client-controlled cookie, this backend requires the secret to be unforgeable. Configure either a signed cookie or a server-side HMAC key:
 
-// if you want to sign cookies:
+- Sign the cookie with `@fastify/cookie` by registering it with a `secret` and setting `cookieOpts: { signed: true }`.
+- Alternatively, keep the cookie unsigned and provide `csrfOpts: { hmacKey }` so tokens cannot be generated without the server-side key.
+
+The plugin throws during registration if neither option is configured, or if `signed` is enabled without a `@fastify/cookie` secret.
+
+```js
 fastify.register(require('@fastify/cookie'), { secret }) // See following section to ensure security
 fastify.register(require('@fastify/csrf-protection'), { cookieOpts: { signed: true } })
 
@@ -72,6 +75,15 @@ fastify.route({
   handler: async (req, reply) => {
     return req.body
   }
+})
+```
+
+With an unsigned cookie, configure the HMAC key instead:
+
+```js
+fastify.register(require('@fastify/cookie'))
+fastify.register(require('@fastify/csrf-protection'), {
+  csrfOpts: { hmacKey } // See following section to ensure security
 })
 ```
 
@@ -137,7 +149,7 @@ fastify.route({
 
 ### Securing the secret
 
-The `secret` shown in the code above is strictly just an example. In all cases, you would need to make sure that the `secret` is:
+The `secret` and `hmacKey` shown in the code above are strictly just examples. In all cases, you would need to make sure that server-side keys are:
 - **Never** hard-coded in the code or `.env` files or anywhere in the repository
 - Stored in some external services like KMS, Vault, or something similar
 - Read at run-time and supplied to this option
@@ -153,13 +165,15 @@ Apart from these safeguards, it is extremely important to [use HTTPS for your we
 | Options      | Description |
 | ----------- | ----------- |
 | `cookieKey` |  The name of the cookie where the CSRF secret will be stored, default `_csrf`.     |
-| `cookieOpts` |  The cookie serialization options. See [@fastify/cookie](https://github.com/fastify/fastify-cookie).    |
+| `cookieOpts` |  The cookie serialization options. See [@fastify/cookie](https://github.com/fastify/fastify-cookie). With `@fastify/cookie`, either `signed: true` or `csrfOpts.hmacKey` is required.    |
 | `sessionKey` |  The key where to store the CSRF secret in the session.     |
 | `getToken` |  A sync function to get the CSRF secret from the request.     |
 | `getUserInfo` |  A sync function to get a string of user-specific information to prevent cookie tossing.     |
 | `sessionPlugin` |  The session plugin that you are using (if applicable).     |
-| `csrfOpts` |  The csrf options. See [@fastify/csrf](https://github.com/fastify/csrf).     |
+| `csrfOpts` |  The csrf options. See [@fastify/csrf](https://github.com/fastify/csrf). With `@fastify/cookie`, either `hmacKey` or `cookieOpts.signed: true` is required.     |
 | `logLevel` | The log level for `fastify.csrfProtection` errors.     |
+
+When using the `@fastify/cookie` backend, the plugin requires `cookieOpts.signed: true` or `csrfOpts.hmacKey` to prevent clients from forging the stored CSRF secret. When `getUserInfo` is configured, `csrfOpts.hmacKey` is always required.
 
 ### `reply.generateCsrf([opts])`
 
@@ -213,14 +227,20 @@ It is recommended to provide a custom `getToken` function for performance and [s
 
 ```js
 fastify.register(require('@fastify/csrf-protection'),
-  { getToken: function (req) { return req.headers['csrf-token'] } }
+  {
+    csrfOpts: { hmacKey },
+    getToken: function (req) { return req.headers['csrf-token'] }
+  }
 )
 ```
 or
 
 ```js
 fastify.register(require('@fastify/csrf-protection'),
-  { getToken: (req) => req.headers['csrf-token'] }
+  {
+    csrfOpts: { hmacKey },
+    getToken: (req) => req.headers['csrf-token']
+  }
 )
 ```
 

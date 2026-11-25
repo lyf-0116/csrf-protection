@@ -13,8 +13,8 @@ declare module 'fastify' {
 }
 
 async function run () {
-  await fastify.register(FastifyCookie)
-  await fastify.register(FastifyCsrfProtection)
+  await fastify.register(FastifyCookie, { secret: 'a secret with minimum length of 32 characters' })
+  await fastify.register(FastifyCsrfProtection, { cookieOpts: { signed: true } })
 
   fastify.route({
     method: 'GET',
@@ -75,8 +75,27 @@ fastify.register(FastifyCsrfProtection, {
   sessionPlugin: '@fastify/cookie'
 })
 fastify.register(FastifyCsrfProtection, { csrfOpts: { hmacKey: 'hmac' } })
-fastify.register(FastifyCsrfProtection, {})
-fastify.register(FastifyCsrfProtection, { csrfOpts: {} })
+fastify.register(FastifyCsrfProtection, { cookieOpts: { signed: true } })
+fastify.register(FastifyCsrfProtection, {
+  cookieOpts: { signed: true, path: '/' },
+  csrfOpts: { algorithm: 'sha1' }
+})
+fastify.register(FastifyCsrfProtection, {
+  cookieOpts: { signed: false },
+  csrfOpts: { hmacKey: 'hmac' }
+})
+
+expect(fastify.register).type.not.toBeCallableWith(FastifyCsrfProtection, {})
+expect(fastify.register).type.not.toBeCallableWith(FastifyCsrfProtection, { csrfOpts: {} })
+expect(fastify.register).type.not.toBeCallableWith(FastifyCsrfProtection, {
+  cookieOpts: { signed: false }
+})
+expect(fastify.register).type.not.toBeCallableWith(FastifyCsrfProtection, {
+  cookieOpts: { path: '/' }
+})
+expect(fastify.register).type.not.toBeCallableWith(FastifyCsrfProtection, {
+  csrfOpts: { algorithm: 'sha1' }
+})
 
 expect(fastify.register).type.not.toBeCallableWith(FastifyCsrfProtection, {
   csrfOpts: { userInfo: true },
@@ -87,7 +106,6 @@ fastify.register(FastifyCsrfProtection, {
   sessionPlugin: '@fastify/cookie',
   csrfOpts: { userInfo: true, hmacKey: 'key' }
 })
-fastify.register(FastifyCsrfProtection, { sessionPlugin: '@fastify/cookie' })
 fastify.register(FastifyCsrfProtection, {
   csrfOpts: {},
   sessionPlugin: '@fastify/session'
@@ -100,4 +118,7 @@ fastify.register(FastifyCsrfProtection, { sessionPlugin: '@fastify/session' })
 fastify.register(FastifyCsrfProtection, {
   sessionPlugin: '@fastify/secure-session'
 })
-fastify.register(FastifyCsrfProtection, { logLevel: 'info' })
+fastify.register(FastifyCsrfProtection, {
+  logLevel: 'info',
+  csrfOpts: { hmacKey: 'hmac' }
+})

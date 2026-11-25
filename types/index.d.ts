@@ -43,10 +43,24 @@ declare namespace fastifyCsrfProtection {
     userInfo?: false;
   }
 
-  interface FastifyCsrfProtectionOptionsFastifyCookie {
+  type OptionalCSRFHmac = Omit<CSRFOptions, 'userInfo'> &
+    Required<Pick<CSRFOptions, 'hmacKey'>> & { userInfo?: false }
+
+  interface FastifyCsrfProtectionOptionsFastifyCookieSigned {
     sessionPlugin?: '@fastify/cookie';
+    cookieOpts: CookieSerializeOptions & { signed: true };
     csrfOpts?: OptionalCSRFNoUserInfo | RequiredCSRFHmac;
   }
+
+  interface FastifyCsrfProtectionOptionsFastifyCookieUnsigned {
+    sessionPlugin?: '@fastify/cookie';
+    cookieOpts?: CookieSerializeOptions;
+    csrfOpts: OptionalCSRFHmac | RequiredCSRFHmac;
+  }
+
+  type FastifyCsrfProtectionOptionsFastifyCookie =
+    FastifyCsrfProtectionOptionsFastifyCookieSigned |
+    FastifyCsrfProtectionOptionsFastifyCookieUnsigned
 
   interface FastifyCsrfProtectionOptionsFastifySession {
     sessionPlugin: '@fastify/session';

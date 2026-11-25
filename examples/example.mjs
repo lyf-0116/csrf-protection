@@ -1,13 +1,16 @@
 import Fastify from 'fastify'
 import fastifyCookie from '@fastify/cookie'
 import fastifyCsrfProtection from '../index.js'
+import { randomBytes } from 'node:crypto'
 
 const fastify = Fastify({
   logger: true
 })
 
-fastify.register(fastifyCookie)
-await fastify.register(fastifyCsrfProtection)
+// Generate a key for this demo. Production deployments should use a stable
+// secret from an external secret store instead.
+fastify.register(fastifyCookie, { secret: randomBytes(32).toString('hex') })
+await fastify.register(fastifyCsrfProtection, { cookieOpts: { signed: true } })
 
 fastify.post(
   '/',

@@ -46,8 +46,21 @@ async function fastifyCsrfProtection (fastify, opts) {
     csrfOpts.userInfo = true
   }
 
-  if (sessionPlugin === '@fastify/cookie' && csrfOpts.userInfo) {
-    assert(csrfOpts.hmacKey, 'csrfOpts.hmacKey is required')
+  if (sessionPlugin === '@fastify/cookie') {
+    if (csrfOpts.userInfo) {
+      assert(csrfOpts.hmacKey, 'csrfOpts.hmacKey is required')
+    } else {
+      assert(
+        cookieOpts.signed || csrfOpts.hmacKey,
+        'cookieOpts.signed or csrfOpts.hmacKey is required'
+      )
+      if (cookieOpts.signed) {
+        assert(
+          fastify.hasDecorator('signCookie'),
+          '@fastify/cookie must be registered with a secret when cookieOpts.signed is true'
+        )
+      }
+    }
   }
 
   const tokens = new CSRF(csrfOpts)
